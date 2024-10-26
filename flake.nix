@@ -1,5 +1,5 @@
 {
-  description = "A Nix-flake-based Node.js development environment";
+  description = "A Nix-flake-based C/C++ development environment";
 
   inputs.nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
 
@@ -7,19 +7,21 @@
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
-        pkgs = import nixpkgs { inherit system; overlays = [ self.overlays.default ]; };
+        pkgs = import nixpkgs { inherit system; };
       });
     in
     {
-      overlays.default = final: prev: rec {
-        nodejs = prev.nodejs;
-        yarn = (prev.yarn.override { inherit nodejs; });
-      };
-
       devShells = forEachSupportedSystem ({ pkgs }: {
-        default = pkgs.mkShell {
-          packages = with pkgs; [ node2nix nodejs nodePackages.pnpm yarn ];
-        };
+        default = pkgs.mkShell.override
+          {
+            # Override stdenv in order to change compiler:
+            # stdenv = pkgs.clangStdenv;
+          }
+          {
+            packages = with pkgs; [
+              clang-tools
+            ] ++ (if system == "aarch64-darwin" then [ ] else [ gdb ]);
+          };
       });
     };
 }
