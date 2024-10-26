@@ -3,3 +3,4 @@ result
 *.o
 game_client
 game_server
+game
