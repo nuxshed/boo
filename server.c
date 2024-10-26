@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #define SERVER_PORT 12345
+#define SERVER_IP "192.168.1.10"  // Replace with the actual IP address
 
 Server server;
 
@@ -34,24 +35,21 @@ void *server_broadcast_handler(void *arg) {
             perror("Failed to read server message");
             break;
         }
-        // Broadcasting the server's message to all clients
-        broadcast_to_clients(&server, message, -1);  // -1 ensures no client is skipped
+        broadcast_to_clients(&server, message, -1);  // Broadcast to all clients
     }
     return NULL;
 }
 
 int main() {
-    if (!init_server(&server, SERVER_PORT)) {
+    if (!init_server(&server, SERVER_IP, SERVER_PORT)) {
         printf("Failed to initialize server.\n");
         return 1;
     }
 
-    // Create a thread to handle server broadcasts
     pthread_t server_broadcast_thread;
     pthread_create(&server_broadcast_thread, NULL, server_broadcast_handler, NULL);
     pthread_detach(server_broadcast_thread);
 
-    // Main loop to accept clients and start threads for each one
     while (1) {
         if (accept_client(&server)) {
             int client_index = server.client_count - 1;

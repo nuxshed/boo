@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#define SERVER_IP "127.0.0.1"
+#define SERVER_IP "10.2.131.219"  // Replace with the actual server IP
 #define SERVER_PORT 12345
 
 void *receive_messages(void *conn) {

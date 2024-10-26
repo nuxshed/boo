@@ -5,10 +5,9 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <pthread.h>
 
-bool init_server(Server *server, int port) {
+bool init_server(Server *server, const char *ip_address, int port) {
     server->client_count = 0;
     server->server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server->server_fd == -1) {
@@ -18,7 +17,7 @@ bool init_server(Server *server, int port) {
 
     struct sockaddr_in server_addr = {0};
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_addr.s_addr = inet_addr(ip_address);
     server_addr.sin_port = htons(port);
 
     if (bind(server->server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
@@ -30,7 +29,7 @@ bool init_server(Server *server, int port) {
         return false;
     }
 
-    printf("Server initialized on port %d\n", port);
+    printf("Server initialized on IP %s, port %d\n", ip_address, port);
     return true;
 }
 
