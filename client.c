@@ -29,7 +29,11 @@ void* receive_messages(void* arg) {
     return NULL;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        printf("Usage: %s <server_ip>\n", argv[0]);
+        exit(1);
+    }
     struct sockaddr_in server_addr;
     pthread_t receive_thread;
     
@@ -44,7 +48,7 @@ int main() {
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
-    if (inet_pton(AF_INET, "10.2.138.213", &server_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0) {
         perror("Invalid address");
         exit(1);
     }
