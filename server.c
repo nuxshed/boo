@@ -1,11 +1,9 @@
 #include "sock.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
-
-#define SERVER_PORT 12345
-#define SERVER_IP "192.168.1.10"  // Replace with the actual IP address
 
 Server server;
 
@@ -40,11 +38,21 @@ void *server_broadcast_handler(void *arg) {
     return NULL;
 }
 
-int main() {
-    if (!init_server(&server, SERVER_IP, SERVER_PORT)) {
+int main(int argc, char *argv[]) {
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <IP> <PORT>\n", argv[0]);
+        return 1;
+    }
+
+    const char *server_ip = argv[1];
+    int server_port = atoi(argv[2]);
+
+    if (!init_server(&server, server_ip, server_port)) {
         printf("Failed to initialize server.\n");
         return 1;
     }
+
+    printf("Server running on %s:%d\n", server_ip, server_port);
 
     pthread_t server_broadcast_thread;
     pthread_create(&server_broadcast_thread, NULL, server_broadcast_handler, NULL);
@@ -52,6 +60,7 @@ int main() {
 
     while (1) {
         if (accept_client(&server)) {
+            printf("Accepted new client: %d\n", server.client_count - 1);
             int client_index = server.client_count - 1;
             pthread_t client_thread;
             pthread_create(&client_thread, NULL, client_handler, &client_index);
