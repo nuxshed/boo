@@ -1,69 +1,86 @@
-#include "sock.h"
+// chat_client.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <errno.h>
 
-void *receive_messages(void *conn) {
-    Connection *client = (Connection *)conn;
+#define BUFFER_SIZE 1024
+#define PORT 5000
+
+int client_socket;
+
+// Function to receive messages from server
+void* receive_messages(void* arg) {
     char buffer[BUFFER_SIZE];
-
     while (1) {
-        int bytes_received = receive_from_client(client, buffer, BUFFER_SIZE);
-        if (bytes_received > 0) {
-            printf("Message from server: %s", buffer);
-        } else if (bytes_received == 0) {
-            printf("Disconnected from server.\n");
-            break;
+        int bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
+        if (bytes_received <= 0) {
+            printf("\nDisconnected from server\n");
+            exit(1);
         }
+        buffer[bytes_received] = '\0';
+        printf("Server broadcast: %s", buffer);
     }
     return NULL;
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s <SERVER_IP> <PORT>\n", argv[0]);
-        return 1;
-    }
-
-    const char *server_ip = argv[1];
-    int server_port = atoi(argv[2]);
-
-    Connection client;
-    client.sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (client.sockfd == -1) {
+int main() {
+    struct sockaddr_in server_addr;
+    pthread_t receive_thread;
+    
+    // Create socket
+    client_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (client_socket < 0) {
         perror("Socket creation failed");
-        return 1;
+        exit(1);
     }
 
-    client.addr.sin_family = AF_INET;
-    client.addr.sin_port = htons(server_port);
-    inet_pton(AF_INET, server_ip, &client.addr.sin_addr);
-
-    printf("Connecting to server %s on port %d...\n", server_ip, server_port);
-    if (connect(client.sockfd, (struct sockaddr *)&client.addr, sizeof(client.addr)) == -1) {
-        perror("Connection to server failed");
-        return 1;
+    // Configure server address
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(PORT);
+    if (inet_pton(AF_INET, "10.2.138.213", &server_addr.sin_addr) <= 0) {
+        perror("Invalid address");
+        exit(1);
     }
-    printf("Connected to the server.\n");
 
-    pthread_t recv_thread;
-    pthread_create(&recv_thread, NULL, receive_messages, &client);
-    pthread_detach(recv_thread);
+    printf("Attempting to connect to server on port %d...\n", PORT);
 
+    // Connect to server
+    if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection failed");
+        printf("Error number: %d\n", errno);
+        printf("Error details: %s\n", strerror(errno));
+        exit(1);
+    }
+
+    printf("Successfully connected to server\n");
+    printf("Waiting for server broadcasts...\n");
+
+    // Create thread to receive server broadcasts
+    if (pthread_create(&receive_thread, NULL, receive_messages, NULL) != 0) {
+        perror("Failed to create thread");
+        exit(1);
+    }
+
+    // Main loop to send messages to server
     char message[BUFFER_SIZE];
+    printf("Enter messages (they will be sent to server):\n");
     while (1) {
-        printf("Enter message: ");
-        if (fgets(message, BUFFER_SIZE, stdin) == NULL) {
-            break;
-        }
-        if (!send_to_client(&client, message)) {
-            printf("Failed to send message.\n");
+        if (fgets(message, BUFFER_SIZE, stdin) != NULL) {
+            if (send(client_socket, message, strlen(message), 0) < 0) {
+                perror("Send failed");
+                break;
+            }
         }
     }
 
-    close_client(&client);
+    // Cleanup
+    close(client_socket);
     return 0;
 }
