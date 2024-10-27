@@ -4,7 +4,7 @@
 #include <netinet/in.h>
 
 #define BUFFER_SIZE 2048
-#define DEFAULT_PORT 5000
+#define DEFAULT_PORT 8888
 
 /**
  * @brief Initialize a server socket.
