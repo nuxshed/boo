@@ -14,8 +14,9 @@
 #define CMD_MOVE "MOVE"
 #define CMD_ASSIGN_ID "ASSIGN_ID"
 #define CMD_GAME_STATE "GAME_STATE"
+#define CMD_SHOOT "SHOOT"
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 2048  // Increased buffer size
 
 typedef struct {
     int id;
@@ -23,10 +24,20 @@ typedef struct {
     int y;
 } PlayerInfo;
 
+typedef struct {
+    int x;
+    int y;
+    int active;
+    char direction;
+} Bullet;
+
 int grid[GRID_HEIGHT][GRID_WIDTH];
 PlayerInfo players_info[MAX_PLAYERS];
+Bullet bullets[MAX_PLAYERS];
 int local_id = -1;
 pthread_mutex_t game_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+Color player_colors[MAX_PLAYERS] = {RED, GREEN, BLUE, YELLOW};
 
 void initialize_grid() {
     for (int y = 0; y < GRID_HEIGHT; y++) {
@@ -43,6 +54,7 @@ void parse_game_state(char* data) {
         players_info[i].id = 0;
         players_info[i].x = 0;
         players_info[i].y = 0;
+        bullets[i].active = 0;
     }
 
     char* token = strtok(data, ";");
@@ -62,6 +74,14 @@ void parse_game_state(char* data) {
             int x, y;
             sscanf(token, "WALL:%d:%d", &x, &y);
             grid[y][x] = 1;
+        } else if (strncmp(token, "BULLET:", 7) == 0) {
+            int id, x, y;
+            char direction;
+            sscanf(token, "BULLET:%d:%d:%d:%c", &id, &x, &y, &direction);
+            bullets[id].x = x;
+            bullets[id].y = y;
+            bullets[id].direction = direction;
+            bullets[id].active = 1;
         }
         token = strtok(NULL, ";");
     }
@@ -118,6 +138,22 @@ int main() {
             char command[BUFFER_SIZE];
             snprintf(command, sizeof(command), "ACTION:MOVE:1:D");
             send_data(client_socket, command);
+        } else if (IsKeyPressed(KEY_UP)) {
+            char command[BUFFER_SIZE];
+            snprintf(command, sizeof(command), "ACTION:SHOOT:U");
+            send_data(client_socket, command);
+        } else if (IsKeyPressed(KEY_DOWN)) {
+            char command[BUFFER_SIZE];
+            snprintf(command, sizeof(command), "ACTION:SHOOT:D");
+            send_data(client_socket, command);
+        } else if (IsKeyPressed(KEY_LEFT)) {
+            char command[BUFFER_SIZE];
+            snprintf(command, sizeof(command), "ACTION:SHOOT:L");
+            send_data(client_socket, command);
+        } else if (IsKeyPressed(KEY_RIGHT)) {
+            char command[BUFFER_SIZE];
+            snprintf(command, sizeof(command), "ACTION:SHOOT:R");
+            send_data(client_socket, command);
         }
 
         BeginDrawing();
@@ -133,8 +169,14 @@ int main() {
 
         for (int i = 0; i < MAX_PLAYERS; i++) {
             if (players_info[i].id != 0) {
-                Color player_color = (players_info[i].id == local_id) ? BLUE : (Color){255, 0, 0, 255};
+                Color player_color = player_colors[players_info[i].id - 1];
                 DrawRectangle(players_info[i].x * CELL_SIZE, players_info[i].y * CELL_SIZE, CELL_SIZE, CELL_SIZE, player_color);
+            }
+        }
+
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (bullets[i].active) {
+                DrawCircle(bullets[i].x * CELL_SIZE + CELL_SIZE / 2, bullets[i].y * CELL_SIZE + CELL_SIZE / 2, CELL_SIZE / 4, BLACK);
             }
         }
         pthread_mutex_unlock(&game_mutex);
