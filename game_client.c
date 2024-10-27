@@ -6,9 +6,9 @@
 #include <unistd.h>
 #include "raylib.h"
 
-#define MAX_PLAYERS 2
-#define GRID_WIDTH 20
-#define GRID_HEIGHT 20
+#define MAX_PLAYERS 4
+#define GRID_WIDTH 30
+#define GRID_HEIGHT 30
 #define CELL_SIZE 30
 
 #define CMD_MOVE "MOVE"
@@ -58,6 +58,10 @@ void parse_game_state(char* data) {
                     break;
                 }
             }
+        } else if (strncmp(token, "WALL:", 5) == 0) {
+            int x, y;
+            sscanf(token, "WALL:%d:%d", &x, &y);
+            grid[y][x] = 1;
         }
         token = strtok(NULL, ";");
     }
@@ -65,79 +69,75 @@ void parse_game_state(char* data) {
     pthread_mutex_unlock(&game_mutex);
 }
 
-void* receive_thread_func(void* arg) {
+void* receive_thread(void* arg) {
     int client_socket = *((int*)arg);
-    char buffer[BUFFER_SIZE];
 
+    char buffer[BUFFER_SIZE];
     while (1) {
         int bytes_received = receive_data(client_socket, buffer, BUFFER_SIZE);
         if (bytes_received <= 0) {
             printf("Disconnected from server.\n");
-            close(client_socket);
-            exit(1);
+            break;
         }
 
         buffer[bytes_received] = '\0';
-        parse_game_state(buffer);
+
+        if (strncmp(buffer, CMD_ASSIGN_ID, strlen(CMD_ASSIGN_ID)) == 0) {
+            sscanf(buffer, "ASSIGN_ID:%d", &local_id);
+            printf("Assigned ID: %d\n", local_id);
+        } else if (strncmp(buffer, CMD_GAME_STATE, strlen(CMD_GAME_STATE)) == 0) {
+            parse_game_state(buffer + strlen(CMD_GAME_STATE) + 1);
+        }
     }
 
     return NULL;
 }
 
-int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <server_ip>\n", argv[0]);
-        return 1;
-    }
+int main() {
+    int client_socket = init_client_socket("127.0.0.1", DEFAULT_PORT);
 
-    int client_socket = init_client_socket(argv[1], 5001);
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, receive_thread, &client_socket);
 
-    InitWindow(GRID_WIDTH * CELL_SIZE, GRID_HEIGHT * CELL_SIZE, "Pumpkin Panic");
-    SetTargetFPS(60);
-
-    initialize_grid();
-
-    pthread_t recv_thread;
-    pthread_create(&recv_thread, NULL, receive_thread_func, &client_socket);
-    pthread_detach(recv_thread);
+    InitWindow(GRID_WIDTH * CELL_SIZE, GRID_HEIGHT * CELL_SIZE, "Game Client");
 
     while (!WindowShouldClose()) {
-        BeginDrawing();
-        ClearBackground(RAYWHITE);
-
-        for (int y = 0; y < GRID_HEIGHT; y++) {
-            for (int x = 0; x < GRID_WIDTH; x++) {
-                DrawRectangleLines(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, LIGHTGRAY);
-            }
-        }
-
-        pthread_mutex_lock(&game_mutex);
-        for (int i = 0; i < MAX_PLAYERS; i++) {
-            if (players_info[i].id != 0) {
-                Color player_color = (players_info[i].id == local_id) ? BLUE : RED;
-                DrawRectangle(players_info[i].x * CELL_SIZE, players_info[i].y * CELL_SIZE, CELL_SIZE, CELL_SIZE, player_color);
-                DrawText(TextFormat("P%d", players_info[i].id), players_info[i].x * CELL_SIZE + 5, players_info[i].y * CELL_SIZE + 5, 20, WHITE);
-            }
-        }
-        pthread_mutex_unlock(&game_mutex);
-
         if (IsKeyPressed(KEY_W)) {
             char command[BUFFER_SIZE];
-            sprintf(command, "ACTION:MOVE:0:-1");
+            snprintf(command, sizeof(command), "ACTION:MOVE:1:W");
             send_data(client_socket, command);
         } else if (IsKeyPressed(KEY_S)) {
             char command[BUFFER_SIZE];
-            sprintf(command, "ACTION:MOVE:0:1");
+            snprintf(command, sizeof(command), "ACTION:MOVE:1:S");
             send_data(client_socket, command);
         } else if (IsKeyPressed(KEY_A)) {
             char command[BUFFER_SIZE];
-            sprintf(command, "ACTION:MOVE:-1:0");
+            snprintf(command, sizeof(command), "ACTION:MOVE:1:A");
             send_data(client_socket, command);
         } else if (IsKeyPressed(KEY_D)) {
             char command[BUFFER_SIZE];
-            sprintf(command, "ACTION:MOVE:1:0");
+            snprintf(command, sizeof(command), "ACTION:MOVE:1:D");
             send_data(client_socket, command);
         }
+
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+
+        pthread_mutex_lock(&game_mutex);
+        for (int y = 0; y < GRID_HEIGHT; y++) {
+            for (int x = 0; x < GRID_WIDTH; x++) {
+                Color cell_color = (grid[y][x] == 1) ? DARKGRAY : LIGHTGRAY;
+                DrawRectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, cell_color);
+            }
+        }
+
+        for (int i = 0; i < MAX_PLAYERS; i++) {
+            if (players_info[i].id != 0) {
+                Color player_color = (players_info[i].id == local_id) ? BLUE : (Color){255, 0, 0, 255};
+                DrawRectangle(players_info[i].x * CELL_SIZE, players_info[i].y * CELL_SIZE, CELL_SIZE, CELL_SIZE, player_color);
+            }
+        }
+        pthread_mutex_unlock(&game_mutex);
 
         EndDrawing();
     }

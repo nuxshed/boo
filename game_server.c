@@ -1,28 +1,25 @@
 #include "sock.h"
 #include <stdio.h>
-#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
 
+#define MAX_PLAYERS 4
+#define GRID_WIDTH 30
+#define GRID_HEIGHT 30
 #define BUFFER_SIZE 1024
-#define MAX_PLAYERS 2
-#define GRID_WIDTH 20
-#define GRID_HEIGHT 20
-
-#define CMD_MOVE "MOVE"
-#define CMD_ASSIGN_ID "ASSIGN_ID"
-#define CMD_GAME_STATE "GAME_STATE"
 
 typedef struct {
     int id;
     int socket;
-    int x, y;
+    int x;
+    int y;
     int active;
 } Player;
 
-int grid[GRID_HEIGHT][GRID_WIDTH];
 Player players[MAX_PLAYERS];
+int grid[GRID_HEIGHT][GRID_WIDTH];
 pthread_mutex_t game_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void initialize_grid() {
@@ -33,25 +30,48 @@ void initialize_grid() {
     }
 }
 
+void generate_walls() {
+    for (int y = 1; y < GRID_HEIGHT - 1; y++) {
+        for (int x = 1; x < GRID_WIDTH - 1; x++) {
+            if (rand() % 5 == 0) { // 20% chance to place a wall
+                grid[y][x] = 1;
+            }
+        }
+    }
+}
+
 void assign_player_id(Player* player, int id) {
     player->id = id;
     player->active = 1;
-    player->x = (id == 1) ? 1 : GRID_WIDTH - 2;
-    player->y = (id == 1) ? 1 : GRID_HEIGHT - 2;
+
+    // Find a random empty spot for the player
+    do {
+        player->x = rand() % GRID_WIDTH;
+        player->y = rand() % GRID_HEIGHT;
+    } while (grid[player->y][player->x] != 0);
 
     char assign_msg[BUFFER_SIZE];
-    sprintf(assign_msg, "%s:%d", CMD_ASSIGN_ID, id);
+    snprintf(assign_msg, sizeof(assign_msg), "ASSIGN_ID:%d", id);
     send_data(player->socket, assign_msg);
 }
 
 void broadcast_game_state() {
-    char state_msg[BUFFER_SIZE] = "";
-    char temp[64];
-
+    char state_msg[BUFFER_SIZE * 2] = "GAME_STATE:"; // Increase buffer size
     for (int i = 0; i < MAX_PLAYERS; i++) {
         if (players[i].active) {
-            sprintf(temp, "PLAYER:%d:%d:%d;", players[i].id, players[i].x, players[i].y);
-            strcat(state_msg, temp);
+            char player_info[50];
+            snprintf(player_info, sizeof(player_info), "PLAYER:%d:%d:%d;", players[i].id, players[i].x, players[i].y);
+            strcat(state_msg, player_info);
+        }
+    }
+
+    for (int y = 0; y < GRID_HEIGHT; y++) {
+        for (int x = 0; x < GRID_WIDTH; x++) {
+            if (grid[y][x] == 1) {
+                char wall_info[20];
+                snprintf(wall_info, sizeof(wall_info), "WALL:%d:%d;", x, y);
+                strcat(state_msg, wall_info);
+            }
         }
     }
 
@@ -97,14 +117,24 @@ void* handle_client(void* arg) {
         }
 
         if (strncmp(buffer, "ACTION:MOVE:", 12) == 0) {
-            int dx, dy;
-            sscanf(buffer, "ACTION:MOVE:%d:%d", &dx, &dy);
+            int steps = 1;
+            char direction;
+            sscanf(buffer + 12, "%d:%c", &steps, &direction);
+
+            int dx = 0, dy = 0;
+            switch (direction) {
+                case 'W': dy = -steps; break;
+                case 'S': dy = steps; break;
+                case 'A': dx = -steps; break;
+                case 'D': dx = steps; break;
+            }
 
             pthread_mutex_lock(&game_mutex);
             int new_x = players[player_slot].x + dx;
             int new_y = players[player_slot].y + dy;
 
-            if (new_x >= 0 && new_x < GRID_WIDTH && new_y >= 0 && new_y < GRID_HEIGHT) {
+            // Check for wall collision
+            if (new_x >= 0 && new_x < GRID_WIDTH && new_y >= 0 && new_y < GRID_HEIGHT && grid[new_y][new_x] == 0) {
                 players[player_slot].x = new_x;
                 players[player_slot].y = new_y;
                 printf("Player %d moved to (%d, %d)\n", players[player_slot].id, new_x, new_y);
@@ -118,37 +148,30 @@ void* handle_client(void* arg) {
     return NULL;
 }
 
-void run_server(int port) {
+int main() {
+    int server_socket = init_server_socket(DEFAULT_PORT);
+    printf("Server started on port %d\n", DEFAULT_PORT);
+
     initialize_grid();
-    int server_socket = init_server_socket(port);
-    printf("Server started on port %d. Waiting for players...\n", port);
+    generate_walls();
 
     while (1) {
-        struct sockaddr_in address;
-        socklen_t addrlen = sizeof(address);
-        int new_socket = accept(server_socket, (struct sockaddr*)&address, &addrlen);
-        if (new_socket < 0) {
+        struct sockaddr_in client_address;
+        socklen_t client_len = sizeof(client_address);
+        int* client_socket = malloc(sizeof(int));
+        *client_socket = accept(server_socket, (struct sockaddr*)&client_address, &client_len);
+
+        if (*client_socket < 0) {
             perror("Accept failed");
+            free(client_socket);
             continue;
         }
 
-        int* pclient = malloc(sizeof(int));
-        *pclient = new_socket;
-
-        pthread_t tid;
-        if (pthread_create(&tid, NULL, handle_client, pclient) != 0) {
-            perror("Failed to create thread");
-            free(pclient);
-            close(new_socket);
-            continue;
-        }
-        pthread_detach(tid);
+        pthread_t thread_id;
+        pthread_create(&thread_id, NULL, handle_client, client_socket);
+        pthread_detach(thread_id);
     }
 
     close(server_socket);
-}
-
-int main() {
-    run_server(5001);
     return 0;
 }
