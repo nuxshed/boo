@@ -58,6 +58,13 @@ Texture2D wallTile;
 Texture2D playerSprites[MAX_PLAYERS];
 Texture2D ghostSprite;
 
+// Add a new enum for game states
+typedef enum {
+    STATE_START_SCREEN,
+    STATE_PLAYING,
+    STATE_GAME_OVER
+} GameState;
+
 // Function to create a pixel art texture programmatically
 Texture2D CreatePixelArtTexture(int width, int height, Color* pixels) {
     Image image = GenImageColor(width, height, BLANK);
@@ -447,118 +454,150 @@ int main(int argc, char* argv[]) {
     InitWindow(GRID_WIDTH * CELL_SIZE, GRID_HEIGHT * CELL_SIZE, "Game Client");
     LoadGameTextures();
 
+    GameState gameState = STATE_START_SCREEN;
     int steps = 0;
 
     while (!WindowShouldClose()) {
-        if (!game_over) {
-            for (int i = KEY_ZERO; i <= KEY_NINE; i++) {
-                if (IsKeyPressed(i)) {
-                    steps = steps * 10 + (i - KEY_ZERO);
+        switch (gameState) {
+            case STATE_START_SCREEN:
+                BeginDrawing();
+                ClearBackground(BLACK);
+
+                // Draw "BOO" in large text
+                const char* booText = "boo";
+                int booFontSize = 80;
+                int booTextWidth = MeasureText(booText, booFontSize);
+                DrawText(booText, (GRID_WIDTH * CELL_SIZE - booTextWidth) / 2, GRID_HEIGHT * CELL_SIZE / 3, booFontSize, WHITE);
+
+                // Draw "Press ENTER to Start" in smaller text
+                const char* startText = "Press ENTER to Start";
+                int startFontSize = 20;
+                int startTextWidth = MeasureText(startText, startFontSize);
+                DrawText(startText, (GRID_WIDTH * CELL_SIZE - startTextWidth) / 2, GRID_HEIGHT * CELL_SIZE * 2 / 3, startFontSize, WHITE);
+
+                EndDrawing();
+
+                if (IsKeyPressed(KEY_ENTER)) {
+                    gameState = STATE_PLAYING;
                 }
-            }
+                break;
 
-            char command[BUFFER_SIZE];
-            char direction = '\0';
+            case STATE_PLAYING:
+                if (!game_over) {
+                    for (int i = KEY_ZERO; i <= KEY_NINE; i++) {
+                        if (IsKeyPressed(i)) {
+                            steps = steps * 10 + (i - KEY_ZERO);
+                        }
+                    }
 
-            if (IsKeyPressed(KEY_W)) {
-                direction = 'W';
-            } else if (IsKeyPressed(KEY_S)) {
-                direction = 'S';
-            } else if (IsKeyPressed(KEY_A)) {
-                direction = 'A';
-            } else if (IsKeyPressed(KEY_D)) {
-                direction = 'D';
-            }
+                    char command[BUFFER_SIZE];
+                    char direction = '\0';
 
-            if (direction != '\0') {
-                if (steps == 0) steps = 1;  // Default to 1 step if no number is entered
-                snprintf(command, sizeof(command), "ACTION:MOVE:%d:%c", steps, direction);
-                send_data(client_socket, command);
-                steps = 0;  // Reset steps after sending the command
-            }
+                    if (IsKeyPressed(KEY_W)) {
+                        direction = 'W';
+                    } else if (IsKeyPressed(KEY_S)) {
+                        direction = 'S';
+                    } else if (IsKeyPressed(KEY_A)) {
+                        direction = 'A';
+                    } else if (IsKeyPressed(KEY_D)) {
+                        direction = 'D';
+                    }
 
-            if (IsKeyPressed(KEY_UP)) {
-                snprintf(command, sizeof(command), "ACTION:SHOOT:U");
-                send_data(client_socket, command);
-            } else if (IsKeyPressed(KEY_DOWN)) {
-                snprintf(command, sizeof(command), "ACTION:SHOOT:D");
-                send_data(client_socket, command);
-            } else if (IsKeyPressed(KEY_LEFT)) {
-                snprintf(command, sizeof(command), "ACTION:SHOOT:L");
-                send_data(client_socket, command);
-            } else if (IsKeyPressed(KEY_RIGHT)) {
-                snprintf(command, sizeof(command), "ACTION:SHOOT:R");
-                send_data(client_socket, command);
-            }
-        }
+                    if (direction != '\0') {
+                        if (steps == 0) steps = 1;  // Default to 1 step if no number is entered
+                        snprintf(command, sizeof(command), "ACTION:MOVE:%d:%c", steps, direction);
+                        send_data(client_socket, command);
+                        steps = 0;  // Reset steps after sending the command
+                    }
 
-        BeginDrawing();
-        ClearBackground(BLACK);
-
-        if (game_over) {
-            DrawText("GAME OVER", GRID_WIDTH * CELL_SIZE / 2 - MeasureText("GAME OVER", 40) / 2, GRID_HEIGHT * CELL_SIZE / 2 - 20, 40, RED);
-        } else {
-            pthread_mutex_lock(&game_mutex);
-            
-            // Draw background tiles
-            for (int y = 0; y < GRID_HEIGHT; y++) {
-                for (int x = 0; x < GRID_WIDTH; x++) {
-                    // Draw background tile
-                    DrawTextureEx(backgroundTile, 
-                        (Vector2){x * CELL_SIZE, y * CELL_SIZE}, 
-                        0.0f, 
-                        CELL_SIZE/16.0f,  // Scale from 16px to CELL_SIZE
-                        WHITE);
-                    
-                    // Draw wall if present
-                    if (grid[y][x] == 1) {
-                        DrawTextureEx(wallTile, 
-                            (Vector2){x * CELL_SIZE, y * CELL_SIZE}, 
-                            0.0f, 
-                            CELL_SIZE/16.0f, 
-                            WHITE);
+                    if (IsKeyPressed(KEY_UP)) {
+                        snprintf(command, sizeof(command), "ACTION:SHOOT:U");
+                        send_data(client_socket, command);
+                    } else if (IsKeyPressed(KEY_DOWN)) {
+                        snprintf(command, sizeof(command), "ACTION:SHOOT:D");
+                        send_data(client_socket, command);
+                    } else if (IsKeyPressed(KEY_LEFT)) {
+                        snprintf(command, sizeof(command), "ACTION:SHOOT:L");
+                        send_data(client_socket, command);
+                    } else if (IsKeyPressed(KEY_RIGHT)) {
+                        snprintf(command, sizeof(command), "ACTION:SHOOT:R");
+                        send_data(client_socket, command);
                     }
                 }
-            }
 
-            // Draw players (bats)
-            for (int i = 0; i < MAX_PLAYERS; i++) {
-                if (players_info[i].id != 0) {
-                    DrawTextureEx(playerSprites[players_info[i].id - 1],
-                        (Vector2){players_info[i].x * CELL_SIZE, players_info[i].y * CELL_SIZE},
-                        0.0f,
-                        CELL_SIZE/16.0f,
-                        WHITE);
-                }
-            }
+                BeginDrawing();
+                ClearBackground(BLACK);
 
-            // Draw bullets
-            for (int i = 0; i < MAX_PLAYERS; i++) {
-                if (bullets[i].active) {
-                    DrawCircle(bullets[i].x * CELL_SIZE + CELL_SIZE / 2, 
-                              bullets[i].y * CELL_SIZE + CELL_SIZE / 2, 
-                              CELL_SIZE / 4, WHITE);
-                }
-            }
+                if (game_over) {
+                    DrawText("GAME OVER", GRID_WIDTH * CELL_SIZE / 2 - MeasureText("GAME OVER", 40) / 2, GRID_HEIGHT * CELL_SIZE / 2 - 20, 40, RED);
+                } else {
+                    pthread_mutex_lock(&game_mutex);
+                    
+                    // Draw background tiles
+                    for (int y = 0; y < GRID_HEIGHT; y++) {
+                        for (int x = 0; x < GRID_WIDTH; x++) {
+                            // Draw background tile
+                            DrawTextureEx(backgroundTile, 
+                                (Vector2){x * CELL_SIZE, y * CELL_SIZE}, 
+                                0.0f, 
+                                CELL_SIZE/16.0f,  // Scale from 16px to CELL_SIZE
+                                WHITE);
+                            
+                            // Draw wall if present
+                            if (grid[y][x] == 1) {
+                                DrawTextureEx(wallTile, 
+                                    (Vector2){x * CELL_SIZE, y * CELL_SIZE}, 
+                                    0.0f, 
+                                    CELL_SIZE/16.0f, 
+                                    WHITE);
+                            }
+                        }
+                    }
 
-            // Draw ghosts
-            for (int i = 0; i < MAX_GHOSTS; i++) {
-                if (ghosts[i].active) {
-                    DrawTextureEx(ghostSprite,
-                        (Vector2){ghosts[i].x * CELL_SIZE, ghosts[i].y * CELL_SIZE},
-                        0.0f,
-                        CELL_SIZE/16.0f,
-                        WHITE);
+                    // Draw players (bats)
+                    for (int i = 0; i < MAX_PLAYERS; i++) {
+                        if (players_info[i].id != 0) {
+                            DrawTextureEx(playerSprites[players_info[i].id - 1],
+                                (Vector2){players_info[i].x * CELL_SIZE, players_info[i].y * CELL_SIZE},
+                                0.0f,
+                                CELL_SIZE/16.0f,
+                                WHITE);
+                        }
+                    }
+
+                    // Draw bullets
+                    for (int i = 0; i < MAX_PLAYERS; i++) {
+                        if (bullets[i].active) {
+                            DrawCircle(bullets[i].x * CELL_SIZE + CELL_SIZE / 2, 
+                                      bullets[i].y * CELL_SIZE + CELL_SIZE / 2, 
+                                      CELL_SIZE / 4, WHITE);
+                        }
+                    }
+
+                    // Draw ghosts
+                    for (int i = 0; i < MAX_GHOSTS; i++) {
+                        if (ghosts[i].active) {
+                            DrawTextureEx(ghostSprite,
+                                (Vector2){ghosts[i].x * CELL_SIZE, ghosts[i].y * CELL_SIZE},
+                                0.0f,
+                                CELL_SIZE/16.0f,
+                                WHITE);
+                        }
+                    }
+                    
+                    pthread_mutex_unlock(&game_mutex);
                 }
-            }
-            
-            pthread_mutex_unlock(&game_mutex);
+
+                EndDrawing();
+                break;
+
+            case STATE_GAME_OVER:
+                // Handle game over state if needed
+                break;
         }
-
-        EndDrawing();
     }
 
-    UnloadGameTextures();  // Add this line
+    UnloadGameTextures();
     CloseWindow();
     close(client_socket);
     return 0;

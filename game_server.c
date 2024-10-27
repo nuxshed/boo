@@ -18,6 +18,7 @@ typedef struct {
     int x;
     int y;
     int active;
+    time_t start_time;  // Track when the player started
 } Player;
 
 typedef struct {
@@ -126,6 +127,7 @@ void* handle_client(void* arg) {
             player_slot = i;
             players[i].socket = client_socket;
             assign_player_id(&players[i], i + 1);
+            players[i].start_time = time(NULL);  // Record start time
             break;
         }
     }
@@ -216,6 +218,11 @@ void* bullet_thread(void* arg) {
                             players[j].active = 0;
                             bullets[i].active = 0;
                             printf("Player %d was hit by a bullet!\n", players[j].id);
+                            // Send a game over message with survival time
+                            char game_over_msg[BUFFER_SIZE];
+                            int survival_time = (int)(time(NULL) - players[j].start_time);
+                            snprintf(game_over_msg, sizeof(game_over_msg), "GAME_OVER:%d", survival_time);
+                            send(players[j].socket, game_over_msg, strlen(game_over_msg), 0);
                             break;
                         }
                     }
@@ -243,10 +250,10 @@ void* bullet_thread(void* arg) {
 }
 
 void* ghost_thread(void* arg) {
-    (void)arg;
+    (void)arg;  // Suppress unused parameter warning
     while (1) {
         pthread_mutex_lock(&game_mutex);
-        // Increase spawn chance from 5% to 20%
+        // Spawn new ghosts at random intervals
         if (rand() % 100 < 20) {  // 20% chance to spawn a ghost each cycle
             for (int i = 0; i < MAX_GHOSTS; i++) {
                 if (!ghosts[i].active) {
@@ -295,7 +302,7 @@ void* ghost_thread(void* arg) {
                         // Send a game over message to the client
                         char game_over_msg[BUFFER_SIZE];
                         snprintf(game_over_msg, sizeof(game_over_msg), "GAME_OVER");
-                        send_data(players[closest_player].socket, game_over_msg);
+                        send(players[closest_player].socket, game_over_msg, strlen(game_over_msg), 0);
                     }
                 }
             }
