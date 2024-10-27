@@ -121,62 +121,100 @@ int main() {
 
     InitWindow(GRID_WIDTH * CELL_SIZE, GRID_HEIGHT * CELL_SIZE, "Game Client");
 
+    int steps = 0;
+    bool game_over = false;
+    int respawn_counter = 0;
+    double last_time = GetTime();
+
     while (!WindowShouldClose()) {
-        if (IsKeyPressed(KEY_W)) {
+        if (!game_over) {
+            // Check for number key presses
+            for (int i = KEY_ZERO; i <= KEY_NINE; i++) {
+                if (IsKeyPressed(i)) {
+                    steps = steps * 10 + (i - KEY_ZERO);
+                }
+            }
+
             char command[BUFFER_SIZE];
-            snprintf(command, sizeof(command), "ACTION:MOVE:1:W");
-            send_data(client_socket, command);
-        } else if (IsKeyPressed(KEY_S)) {
-            char command[BUFFER_SIZE];
-            snprintf(command, sizeof(command), "ACTION:MOVE:1:S");
-            send_data(client_socket, command);
-        } else if (IsKeyPressed(KEY_A)) {
-            char command[BUFFER_SIZE];
-            snprintf(command, sizeof(command), "ACTION:MOVE:1:A");
-            send_data(client_socket, command);
-        } else if (IsKeyPressed(KEY_D)) {
-            char command[BUFFER_SIZE];
-            snprintf(command, sizeof(command), "ACTION:MOVE:1:D");
-            send_data(client_socket, command);
-        } else if (IsKeyPressed(KEY_UP)) {
-            char command[BUFFER_SIZE];
-            snprintf(command, sizeof(command), "ACTION:SHOOT:U");
-            send_data(client_socket, command);
-        } else if (IsKeyPressed(KEY_DOWN)) {
-            char command[BUFFER_SIZE];
-            snprintf(command, sizeof(command), "ACTION:SHOOT:D");
-            send_data(client_socket, command);
-        } else if (IsKeyPressed(KEY_LEFT)) {
-            char command[BUFFER_SIZE];
-            snprintf(command, sizeof(command), "ACTION:SHOOT:L");
-            send_data(client_socket, command);
-        } else if (IsKeyPressed(KEY_RIGHT)) {
-            char command[BUFFER_SIZE];
-            snprintf(command, sizeof(command), "ACTION:SHOOT:R");
-            send_data(client_socket, command);
+            char direction = '\0';
+
+            if (IsKeyPressed(KEY_W)) {
+                direction = 'W';
+            } else if (IsKeyPressed(KEY_S)) {
+                direction = 'S';
+            } else if (IsKeyPressed(KEY_A)) {
+                direction = 'A';
+            } else if (IsKeyPressed(KEY_D)) {
+                direction = 'D';
+            }
+
+            if (direction != '\0') {
+                if (steps == 0) steps = 1;  // Default to 1 step if no number is entered
+                snprintf(command, sizeof(command), "ACTION:MOVE:%d:%c", steps, direction);
+                send_data(client_socket, command);
+                steps = 0;  // Reset steps after sending the command
+            }
+
+            if (IsKeyPressed(KEY_UP)) {
+                snprintf(command, sizeof(command), "ACTION:SHOOT:U");
+                send_data(client_socket, command);
+            } else if (IsKeyPressed(KEY_DOWN)) {
+                snprintf(command, sizeof(command), "ACTION:SHOOT:D");
+                send_data(client_socket, command);
+            } else if (IsKeyPressed(KEY_LEFT)) {
+                snprintf(command, sizeof(command), "ACTION:SHOOT:L");
+                send_data(client_socket, command);
+            } else if (IsKeyPressed(KEY_RIGHT)) {
+                snprintf(command, sizeof(command), "ACTION:SHOOT:R");
+                send_data(client_socket, command);
+            }
         }
 
         BeginDrawing();
         ClearBackground(RAYWHITE);
 
         pthread_mutex_lock(&game_mutex);
-        for (int y = 0; y < GRID_HEIGHT; y++) {
-            for (int x = 0; x < GRID_WIDTH; x++) {
-                Color cell_color = (grid[y][x] == 1) ? DARKGRAY : LIGHTGRAY;
-                DrawRectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, cell_color);
+        if (players_info[local_id - 1].id == 0) {
+            game_over = true;
+            if (respawn_counter == 0) {
+                respawn_counter = 10;  // Start the respawn countdown
             }
         }
 
-        for (int i = 0; i < MAX_PLAYERS; i++) {
-            if (players_info[i].id != 0) {
-                Color player_color = player_colors[players_info[i].id - 1];
-                DrawRectangle(players_info[i].x * CELL_SIZE, players_info[i].y * CELL_SIZE, CELL_SIZE, CELL_SIZE, player_color);
+        if (game_over) {
+            if (respawn_counter > 0) {
+                DrawText(TextFormat("Respawning in %d...", respawn_counter), GRID_WIDTH * CELL_SIZE / 2 - MeasureText("Respawning in 10...", 20) / 2, GRID_HEIGHT * CELL_SIZE / 2 - 10, 20, RED);
+                double current_time = GetTime();
+                if (current_time - last_time >= 1.0) {
+                    respawn_counter--;
+                    last_time = current_time;
+                }
+            } else {
+                game_over = false;
+                // Send a respawn request to the server
+                char command[BUFFER_SIZE];
+                snprintf(command, sizeof(command), "ACTION:RESPAWN");
+                send_data(client_socket, command);
             }
-        }
+        } else {
+            for (int y = 0; y < GRID_HEIGHT; y++) {
+                for (int x = 0; x < GRID_WIDTH; x++) {
+                    Color cell_color = (grid[y][x] == 1) ? DARKGRAY : LIGHTGRAY;
+                    DrawRectangle(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE, cell_color);
+                }
+            }
 
-        for (int i = 0; i < MAX_PLAYERS; i++) {
-            if (bullets[i].active) {
-                DrawCircle(bullets[i].x * CELL_SIZE + CELL_SIZE / 2, bullets[i].y * CELL_SIZE + CELL_SIZE / 2, CELL_SIZE / 4, BLACK);
+            for (int i = 0; i < MAX_PLAYERS; i++) {
+                if (players_info[i].id != 0) {
+                    Color player_color = player_colors[players_info[i].id - 1];
+                    DrawRectangle(players_info[i].x * CELL_SIZE, players_info[i].y * CELL_SIZE, CELL_SIZE, CELL_SIZE, player_color);
+                }
+            }
+
+            for (int i = 0; i < MAX_PLAYERS; i++) {
+                if (bullets[i].active) {
+                    DrawCircle(bullets[i].x * CELL_SIZE + CELL_SIZE / 2, bullets[i].y * CELL_SIZE + CELL_SIZE / 2, CELL_SIZE / 4, BLACK);
+                }
             }
         }
         pthread_mutex_unlock(&game_mutex);
