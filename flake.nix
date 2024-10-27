@@ -21,6 +21,7 @@
             packages = with pkgs; [
               clang-tools
               raylib
+              pkg-config
             ] ++ (if system == "aarch64-darwin" then [ ] else [ gdb ]);
           };
       });

@@ -1,6 +1,14 @@
-result
-.direnv
+# Build artifacts
 *.o
 game_client
 game_server
+
+# Logs
+*.log
+
+# Directory paths
+result
+.direnv
+
+# Other executables or temporary files
 game
