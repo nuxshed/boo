@@ -20,7 +20,7 @@
 #define CMD_SHOOT "SHOOT"
 #define CMD_GAME_OVER "GAME_OVER"
 
-#define BUFFER_SIZE 2048  // Increased buffer size
+#define BUFFER_SIZE 2048
 
 typedef struct {
     int id;
@@ -433,20 +433,24 @@ void UnloadGameTextures() {
     }
 }
 
-int main() {
-    int client_socket = init_client_socket("127.0.0.1", DEFAULT_PORT);
+int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <server_ip>\n", argv[0]);
+        return 1;
+    }
+
+    int client_socket = init_client_socket(argv[1], DEFAULT_PORT);
 
     pthread_t thread_id;
     pthread_create(&thread_id, NULL, receive_thread, &client_socket);
 
     InitWindow(GRID_WIDTH * CELL_SIZE, GRID_HEIGHT * CELL_SIZE, "Game Client");
-    LoadGameTextures();  // Add this line
+    LoadGameTextures();
 
     int steps = 0;
 
     while (!WindowShouldClose()) {
         if (!game_over) {
-            // Check for number key presses
             for (int i = KEY_ZERO; i <= KEY_NINE; i++) {
                 if (IsKeyPressed(i)) {
                     steps = steps * 10 + (i - KEY_ZERO);
