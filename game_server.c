@@ -10,7 +10,7 @@
 #define MAX_GHOSTS 10
 #define GRID_WIDTH 30
 #define GRID_HEIGHT 30
-#define BUFFER_SIZE 2048  // Increased buffer size
+#define BUFFER_SIZE 2048
 
 typedef struct {
     int id;
@@ -18,7 +18,7 @@ typedef struct {
     int x;
     int y;
     int active;
-    time_t start_time;  // Track when the player started
+    time_t start_time;
 } Player;
 
 typedef struct {
@@ -51,7 +51,7 @@ void initialize_grid() {
 void generate_walls() {
     for (int y = 1; y < GRID_HEIGHT - 1; y++) {
         for (int x = 1; x < GRID_WIDTH - 1; x++) {
-            if (rand() % 5 == 0) { // 20% chance to place a wall
+            if (rand() % 5 == 0) { 
                 grid[y][x] = 1;
             }
         }
@@ -62,7 +62,6 @@ void assign_player_id(Player* player, int id) {
     player->id = id;
     player->active = 1;
 
-    // Find a random empty spot for the player
     do {
         player->x = rand() % GRID_WIDTH;
         player->y = rand() % GRID_HEIGHT;
@@ -127,7 +126,7 @@ void* handle_client(void* arg) {
             player_slot = i;
             players[i].socket = client_socket;
             assign_player_id(&players[i], i + 1);
-            players[i].start_time = time(NULL);  // Record start time
+            players[i].start_time = time(NULL);  
             break;
         }
     }
@@ -194,7 +193,7 @@ void* handle_client(void* arg) {
 }
 
 void* bullet_thread(void* arg) {
-    (void)arg;  // Suppress unused parameter warning
+    (void)arg;  
     while (1) {
         pthread_mutex_lock(&game_mutex);
         for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -218,7 +217,7 @@ void* bullet_thread(void* arg) {
                             players[j].active = 0;
                             bullets[i].active = 0;
                             printf("Player %d was hit by a bullet!\n", players[j].id);
-                            // Send a game over message with survival time
+
                             char game_over_msg[BUFFER_SIZE];
                             int survival_time = (int)(time(NULL) - players[j].start_time);
                             snprintf(game_over_msg, sizeof(game_over_msg), "GAME_OVER:%d", survival_time);
@@ -244,21 +243,21 @@ void* bullet_thread(void* arg) {
         pthread_mutex_unlock(&game_mutex);
 
         broadcast_game_state();
-        usleep(100000); // Move bullets every 100ms
+        usleep(100000); 
     }
     return NULL;
 }
 
 void* ghost_thread(void* arg) {
-    (void)arg;  // Suppress unused parameter warning
+    (void)arg;  
     while (1) {
         pthread_mutex_lock(&game_mutex);
-        // Spawn new ghosts at random intervals
-        if (rand() % 100 < 20) {  // 20% chance to spawn a ghost each cycle
+
+        if (rand() % 100 < 20) {  
             for (int i = 0; i < MAX_GHOSTS; i++) {
                 if (!ghosts[i].active) {
                     ghosts[i].active = 1;
-                    // Spawn from a random edge
+
                     if (rand() % 2 == 0) {
                         ghosts[i].x = (rand() % 2) * (GRID_WIDTH - 1);
                         ghosts[i].y = rand() % GRID_HEIGHT;
@@ -271,7 +270,6 @@ void* ghost_thread(void* arg) {
             }
         }
 
-        // Move ghosts towards the nearest player
         for (int i = 0; i < MAX_GHOSTS; i++) {
             if (ghosts[i].active) {
                 int closest_player = -1;
@@ -295,11 +293,10 @@ void* ghost_thread(void* arg) {
                         ghosts[i].y += (dy > 0) ? 1 : -1;
                     }
 
-                    // Check if a ghost catches a player
                     if (ghosts[i].x == players[closest_player].x && ghosts[i].y == players[closest_player].y) {
                         players[closest_player].active = 0;
                         printf("Player %d was caught by a ghost!\n", players[closest_player].id);
-                        // Send a game over message to the client
+
                         char game_over_msg[BUFFER_SIZE];
                         snprintf(game_over_msg, sizeof(game_over_msg), "GAME_OVER");
                         send(players[closest_player].socket, game_over_msg, strlen(game_over_msg), 0);
@@ -310,13 +307,13 @@ void* ghost_thread(void* arg) {
         pthread_mutex_unlock(&game_mutex);
 
         broadcast_game_state();
-        usleep(500000); // Move ghosts every 500ms
+        usleep(500000); 
     }
     return NULL;
 }
 
 int main() {
-    srand(time(NULL));  // Seed the random number generator
+    srand(time(NULL));  
 
     int server_socket = init_server_socket(DEFAULT_PORT);
     printf("Server started on port %d\n", DEFAULT_PORT);
